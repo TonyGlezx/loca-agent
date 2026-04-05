@@ -1,4 +1,4 @@
-from core import LocalAgent, toolkit, generate_image
+from core import LocalAgent, Tools
 from langgraph.graph import StateGraph, START, MessagesState, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import ToolMessage, HumanMessage
@@ -16,7 +16,8 @@ class UseCases():
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     def gen_image(self, prompt):
-        # 1. Start SD pipeline for THIS use case
+        # 1. Instantiate and start tools for THIS use case
+        toolkit = Tools()
         toolkit.start_sd()
 
         system_msg = """
@@ -28,7 +29,7 @@ class UseCases():
         human_msg = f"{prompt} NOT ask me for details, select the image description autonomously."
         
         # 2. Setup tools and LLMs
-        tools = [generate_image]
+        tools = [toolkit.generate_image]
         
         main_llm = ChatOllama(
             model="glm-4.7-flash:latest",
@@ -62,7 +63,6 @@ class UseCases():
                 return {"messages": []}
 
             # Extract image paths from ToolMessage content using regex
-            # Tool result looks like: "The following images were saved succesfully. ['path1.png', 'path2.png']"
             content = last_msg.content
             image_paths = re.findall(r"['\"]([^'\"]+\.png)['\"]", content)
             
@@ -91,9 +91,13 @@ class UseCases():
             return {"messages": [verification_msg]}
 
         def should_continue(state: MessagesState) -> Literal["tool_node", END]:
-            last_message = state["messages"][-1]
+            """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
+            messages = state["messages"]
+            last_message = messages[-1]
+
             if last_message.tool_calls:
                 return "tool_node"
+
             return END
 
         # 4. Build the graph
@@ -109,9 +113,7 @@ class UseCases():
                 should_continue,
                 ["tool_node", END]
             )
-            # After tool_node (image generation), go to vision_node
             graph.add_edge("tool_node", "vision_node")
-            # After vision_node (description), go back to chat_node to evaluate
             graph.add_edge("vision_node", "chat_node")
             
             return graph.compile()

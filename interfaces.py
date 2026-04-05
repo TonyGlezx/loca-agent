@@ -14,8 +14,9 @@ class Interfaces():
             # SD in CPU
             pipe = pipe.to("cpu")
             pipe.vae.enable_tiling()
-            return pipe
             print("SD pipe started succesfully.")
+            return pipe
+            
 
 if __name__ == "__main__":
     pass    

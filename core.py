@@ -1,28 +1,34 @@
 from interfaces import Interfaces
 import uuid6, re
 from langgraph.graph import MessagesState
+from pydantic import BaseModel, Field
 
 from langchain.tools import tool
 from langchain_core.tools import StructuredTool
 from langchain_core.messages import SystemMessage, HumanMessage
 
+class GenerateImageSchema(BaseModel):
+    prompt: str = Field(description="Description of the image to generate.")
+    base_image_name: str = Field(description="A name for the image.")
+    spins: int = Field(default=1, description="How many spins you need of the image.")
+
 class Tools():
     def __init__(self):
         self.interface = Interfaces()
         self.sd_pipe = None
+        # The tool definition is now strictly inside the class instance
+        self.generate_image = StructuredTool.from_function(
+            func=self._generate_image,
+            name="generate_image",
+            description="Generate an image based on a description",
+            args_schema=GenerateImageSchema
+        )
     
     def start_sd(self):
         print("Trying to start SD pipeline")
         self.sd_pipe = self.interface.get_sd_pipe()
 
-    def generate_image(self, prompt: str, base_image_name: str, spins: int = 1 ) -> str:
-        """ Generate an image based on a description
-
-        Args:
-            prompt: Description of the image to generate.
-            base_image_name: A name for the image. 
-            spins: How many spins you need of the image. Defaults to 1 spin.
-        """
+    def _generate_image(self, prompt: str, base_image_name: str, spins: int = 1 ) -> str:
         images = []
         for spin in range(spins):
             image = self.sd_pipe(prompt).images[0]
@@ -35,15 +41,6 @@ class Tools():
             images.append(path)
         
         return f"The following images were saved succesfully. {images}"
-
-toolkit = Tools()
-
-# Create the tool from the instance method to avoid 'self' validation errors
-generate_image = StructuredTool.from_function(
-    func=toolkit.generate_image,
-    name="generate_image",
-    description=toolkit.generate_image.__doc__
-)
 
 class LocalAgent():
     def __init__(self, llm, tools, system_msg, human_msg):
